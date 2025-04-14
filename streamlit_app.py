@@ -18,12 +18,32 @@ hide_streamlit_style = """
             .st-emotion-cache-6qob1r {display: none;} /* Hides GitHub corner */
             </style>
             """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)import streamlit as st
+import pandas as pd
+import numpy as np
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.arima.model import ARIMA
+from prophet import Prophet
+from datetime import timedelta
+
+# SET PAGE CONFIG FIRST
+st.set_page_config(layout="wide", page_title="📈 Sales Forecast App")
+
+# Now you can hide the GitHub icon and other elements
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display:none;}
+    .st-emotion-cache-6qob1r {display: none;} /* GitHub icon */
+    </style>
+"""
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 
 warnings.filterwarnings("ignore")
 
-# Page setup
-st.set_page_config(layout="wide", page_title="📈 Sales Forecast App")
 
 # Session init
 if "data" not in st.session_state:
