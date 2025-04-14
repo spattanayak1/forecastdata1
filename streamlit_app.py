@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import warnings
-
+#changes
 warnings.filterwarnings("ignore")
 
 # Page config
