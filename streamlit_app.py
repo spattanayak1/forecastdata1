@@ -5,49 +5,53 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from scipy.stats import shapiro
 import matplotlib.pyplot as plt
 
-# Set page config
-st.set_page_config(page_title="Sales Forecast App", layout="wide")
+import streamlit as st
+import pandas as pd
+
+st.set_page_config(layout="wide", page_title="Sales Forecast App")
+
 # Ensure session state initialized
 if "data" not in st.session_state:
     st.session_state["data"] = None
 
-# Title
-st.title("📊 Sales Analysis & Forecasting App")
-
-# Sidebar navigation
 menu = st.sidebar.radio("Navigation", ["Upload Data", "Analysis", "Forecast"])
 
-# Initialize session state for data
-if "data" not in st.session_state:
-    st.session_state.data = None
-
-# Upload Menu
 if menu == "Upload Data":
     st.header("📁 Upload Your CSV File")
-    st.markdown("Please upload a CSV file with **Week** and **Sales** columns. Max 100 rows.")
 
-    uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
-if uploaded_file is not None:
-    try:
-        # Try reading using utf-8, fallback to other encodings
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    if uploaded_file is not None:
         try:
-            df = pd.read_csv(uploaded_file, encoding='utf-8')
-        except UnicodeDecodeError:
-            try:
-                df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')  # common fallback
-            except:
-                df = pd.read_csv(uploaded_file, encoding='utf-16')  # another fallback
+            encodings_to_try = ["utf-8", "ISO-8859-1", "utf-16"]
+            read_success = False
 
-        if len(df) > 100:
-            st.error("The uploaded CSV file has more than 100 records. Please upload a CSV file with at most 100 records.")
-            st.session_state['data'] = None
-        else:
-            st.success("CSV file uploaded successfully!")
-            st.session_state['data'] = df
-            st.subheader("Preview of Uploaded Data")
-            st.dataframe(df)
-    except Exception as e:
-        st.error(f"Error reading CSV file: {e}")
+            for enc in encodings_to_try:
+                try:
+                    df = pd.read_csv(uploaded_file, encoding=enc)
+                    if not df.empty and df.shape[1] > 0:
+                        read_success = True
+                        break
+                except Exception:
+                    continue
+
+            if not read_success:
+                st.error("❌ Could not read file. Make sure it's a CSV with proper encoding and column structure.")
+            elif df.shape[0] > 100:
+                st.error("❌ Maximum 100 records allowed. Your file has more than 100 rows.")
+            elif 'Week' not in df.columns or 'Sales' not in df.columns:
+                st.error("❌ CSV must contain 'Week' and 'Sales' columns.")
+            else:
+                df = df[['Week', 'Sales']].copy()
+                df['Week'] = pd.to_numeric(df['Week'], errors='coerce')
+                df['Sales'] = pd.to_numeric(df['Sales'], errors='coerce')
+                df.dropna(inplace=True)
+
+                st.session_state["data"] = df
+                st.success("✅ File uploaded and data saved.")
+                st.dataframe(df)
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {e}")
+
 
 
 # Analysis Menu
