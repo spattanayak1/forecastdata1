@@ -6,6 +6,7 @@ from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from datetime import timedelta
 
+warnings.filterwarnings("ignore")
 # SET PAGE CONFIG FIRST
 st.set_page_config(layout="wide", page_title="📈 Sales Forecast App")
 
@@ -22,7 +23,7 @@ hide_streamlit_style = """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 
-warnings.filterwarnings("ignore")
+
 
 
 # Session init
