@@ -1,167 +1,145 @@
-import warnings  # ← Add this line at the very top
+import warnings
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from datetime import timedelta
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 warnings.filterwarnings("ignore")
-# SET PAGE CONFIG FIRST
+
+# Set page config before anything else
 st.set_page_config(layout="wide", page_title="📈 Sales Forecast App")
 
-# Now you can hide the GitHub icon and other elements
+# Hide GitHub icon and Streamlit UI elements
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stDeployButton {display:none;}
-    .st-emotion-cache-6qob1r {display: none;} /* GitHub icon */
+    .st-emotion-cache-6qob1r {display: none;}
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
+# Title
+st.title("📊 Sales Forecast App")
 
+# Upload section
+uploaded_file = st.file_uploader("📁 Upload your time-series CSV (max 100 rows)", type=["csv"])
 
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
 
+        if df.shape[0] > 100:
+            st.warning("❗ Please upload a CSV with 100 rows or fewer.")
+        else:
+            st.success("✅ File uploaded successfully!")
 
-# Session init
-if "data" not in st.session_state:
-    st.session_state["data"] = None
-
-st.sidebar.title("📊 Menu")
-menu = st.sidebar.radio("Select", ["Forecast"])
-
-if menu == "Forecast":
-    st.title("📦 Upload CSV & Generate Forecasts")
-
-    uploaded_file = st.file_uploader("Upload CSV with 'Week' and 'Sales' (max 100 rows)", type=["csv"])
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            if df.shape[0] > 100:
-                st.error("❌ Maximum 100 rows allowed.")
-            elif 'Week' not in df.columns or 'Sales' not in df.columns:
-                st.error("❌ CSV must contain 'Week' and 'Sales' columns.")
+            # Ensure it has two columns
+            if df.shape[1] != 2:
+                st.error("CSV must have exactly two columns: 'Week' and 'Sales'")
             else:
-                df = df[['Week', 'Sales']].copy()
+                df.columns = ['Week', 'Sales']
                 df['Week'] = pd.to_numeric(df['Week'], errors='coerce')
                 df['Sales'] = pd.to_numeric(df['Sales'], errors='coerce')
                 df.dropna(inplace=True)
-                df.sort_values('Week', inplace=True)
+                df = df.sort_values('Week')
                 df.reset_index(drop=True, inplace=True)
-                st.session_state["data"] = df
-                st.success("✅ Data uploaded successfully.")
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
 
-    if st.session_state["data"] is not None:
-        df = st.session_state["data"]
+                # ---------------------- Analysis Section ----------------------
+                st.header("📈 Exploratory Analysis")
 
-        # --- Data Analysis ---
-        st.subheader("🧪 Data Analysis")
-        st.dataframe(df)
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Mean", round(df["Sales"].mean(), 2))
-        col2.metric("Median", round(df["Sales"].median(), 2))
-        col3.metric("Std Dev", round(df["Sales"].std(), 2))
+                st.subheader("🔹 Raw Data")
+                st.dataframe(df)
 
-        stat, p = shapiro(df["Sales"])
-        st.write(f"**Shapiro-Wilk Test**: Statistic={stat:.4f}, p-value={p:.4f}")
-        st.success("✅ Likely Normal") if p > 0.05 else st.warning("⚠️ Possibly Not Normal")
+                st.subheader("🔹 Summary Statistics")
+                st.write(df['Sales'].describe())
 
-        try:
-            result = seasonal_decompose(df["Sales"], model="additive", period=3)
-            fig, ax = plt.subplots(4, 1, figsize=(10, 8))
-            result.observed.plot(ax=ax[0], title="Observed")
-            result.trend.plot(ax=ax[1], title="Trend")
-            result.seasonal.plot(ax=ax[2], title="Seasonal")
-            result.resid.plot(ax=ax[3], title="Residual")
-            st.pyplot(fig)
-        except Exception as e:
-            st.warning("⚠️ Seasonality check skipped: " + str(e))
+                st.subheader("🔹 Mean & Median")
+                st.write(f"Mean Sales: {df['Sales'].mean():.2f}")
+                st.write(f"Median Sales: {df['Sales'].median():.2f}")
 
-        # Forecast Horizon
-        forecast_weeks = 3
-        last_week = df["Week"].max()
-        new_weeks = list(range(last_week + 1, last_week + forecast_weeks + 1))
+                st.subheader("🔹 Normality (Histogram)")
+                fig, ax = plt.subplots()
+                sns.histplot(df['Sales'], kde=True, ax=ax)
+                st.pyplot(fig)
 
-        # --- ETS Forecast ---
-        st.subheader("📈 ETS Forecast")
-        ets_model = ExponentialSmoothing(df["Sales"], trend="add", seasonal="add", seasonal_periods=3).fit()
-        ets_forecast = ets_model.forecast(forecast_weeks)
+                st.subheader("🔹 Stationarity (ADF Test)")
+                result = adfuller(df['Sales'])
+                st.write(f"ADF Statistic: {result[0]:.2f}")
+                st.write(f"p-value: {result[1]:.4f}")
+                if result[1] < 0.05:
+                    st.success("✅ The series is stationary.")
+                else:
+                    st.warning("⚠️ The series is not stationary.")
 
-        fig1, ax1 = plt.subplots()
-        ax1.plot(df["Week"], df["Sales"], label="Actual")
-        ax1.plot(new_weeks, ets_forecast, label="ETS Forecast", linestyle="--", marker="o")
-        ax1.legend()
-        ax1.set_title("ETS Forecast")
-        st.pyplot(fig1)
+                st.subheader("🔹 Sales Over Time")
+                fig, ax = plt.subplots()
+                sns.lineplot(x=df['Week'], y=df['Sales'], ax=ax)
+                ax.set_title("Sales by Week")
+                st.pyplot(fig)
 
-        # --- ARIMA Forecast ---
-        st.subheader("📈 ARIMA Forecast")
-        arima_model = ARIMA(df["Sales"], order=(1, 1, 1)).fit()
-        arima_forecast = arima_model.forecast(forecast_weeks)
+                # ---------------------- Forecast Section ----------------------
+                st.header("📅 Forecasting (Next 3 Weeks)")
 
-        fig2, ax2 = plt.subplots()
-        ax2.plot(df["Week"], df["Sales"], label="Actual")
-        ax2.plot(new_weeks, arima_forecast, label="ARIMA Forecast", linestyle="--", marker="o")
-        ax2.legend()
-        ax2.set_title("ARIMA Forecast")
-        st.pyplot(fig2)
+                # Prepare future dataframe
+                future_weeks = list(range(df['Week'].max()+1, df['Week'].max()+4))
 
-        # --- Prophet Forecast ---
-        st.subheader("📈 Prophet Forecast")
-        prophet_df = df.rename(columns={"Week": "ds", "Sales": "y"})
-        prophet_df["ds"] = pd.date_range(start="2023-01-01", periods=len(df), freq="W")
+                # ETS Forecast
+                ets_model = ExponentialSmoothing(df['Sales'], trend='add', seasonal=None).fit()
+                ets_forecast = ets_model.forecast(3)
 
-        future_dates = pd.date_range(start=prophet_df["ds"].max() + pd.Timedelta(weeks=1), periods=forecast_weeks, freq="W")
+                # ARIMA Forecast
+                arima_model = ARIMA(df['Sales'], order=(1,1,1)).fit()
+                arima_forecast = arima_model.forecast(3)
 
-        prophet = Prophet()
-        prophet.fit(prophet_df)
-        future = prophet.make_future_dataframe(periods=forecast_weeks, freq='W')
-        forecast = prophet.predict(future)
+                # Prophet Forecast
+                prophet_df = df.copy()
+                prophet_df['ds'] = pd.date_range(start='2024-01-01', periods=len(df), freq='W')
+                prophet_df.rename(columns={'Sales': 'y'}, inplace=True)
+                prophet_model = Prophet()
+                prophet_model.fit(prophet_df[['ds', 'y']])
+                future = prophet_model.make_future_dataframe(periods=3, freq='W')
+                forecast = prophet_model.predict(future)
+                prophet_forecast = forecast[['ds', 'yhat']].tail(3).reset_index(drop=True)
 
-        prophet_forecast = forecast[['ds', 'yhat']].tail(forecast_weeks).copy()
-        prophet_forecast["Week"] = new_weeks
-        prophet_forecast = prophet_forecast[["Week", "yhat"]].rename(columns={"yhat": "Prophet_Forecast"})
+                # Combine forecasts into a table
+                forecast_df = pd.DataFrame({
+                    'Week': future_weeks,
+                    'ETS': ets_forecast.values,
+                    'ARIMA': arima_forecast.values,
+                    'Prophet': prophet_forecast['yhat'].values
+                })
 
-        fig3 = prophet.plot(forecast)
-        st.pyplot(fig3)
+                st.subheader("🔹 Individual Forecasts")
+                st.write("📌 ETS Forecast:", ets_forecast.values)
+                st.write("📌 ARIMA Forecast:", arima_forecast.values)
+                st.write("📌 Prophet Forecast:", prophet_forecast['yhat'].values)
 
-        # --- Final Combined Output ---
-        st.subheader("📊 Combined Forecast Table")
+                st.subheader("📊 Combined Forecast Table")
+                st.dataframe(forecast_df)
 
-        final_df = pd.DataFrame({
-            "Week": new_weeks,
-            "ETS_Forecast": ets_forecast.values,
-            "ARIMA_Forecast": arima_forecast.values,
-            "Prophet_Forecast": prophet_forecast["Prophet_Forecast"].values
-        })
+                # Plot comparison chart
+                st.subheader("📈 Forecast vs Original (Line Chart)")
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.plot(df['Week'], df['Sales'], label='Actual Sales')
+                ax.plot(forecast_df['Week'], forecast_df['ETS'], label='ETS Forecast', linestyle='--')
+                ax.plot(forecast_df['Week'], forecast_df['ARIMA'], label='ARIMA Forecast', linestyle='--')
+                ax.plot(forecast_df['Week'], forecast_df['Prophet'], label='Prophet Forecast', linestyle='--')
+                ax.set_xlabel('Week')
+                ax.set_ylabel('Sales')
+                ax.set_title('Actual vs Forecast (Next 3 Weeks)')
+                ax.legend()
+                st.pyplot(fig)
 
-        st.dataframe(final_df)
-
-        # Combine with original for graph
-        combined_plot_df = df.copy()
-        combined_plot_df["Source"] = "Actual"
-        forecast_dfs = [
-            pd.DataFrame({"Week": new_weeks, "Sales": ets_forecast, "Source": "ETS"}),
-            pd.DataFrame({"Week": new_weeks, "Sales": arima_forecast, "Source": "ARIMA"}),
-            pd.DataFrame({"Week": new_weeks, "Sales": prophet_forecast["Prophet_Forecast"], "Source": "Prophet"})
-        ]
-        full_plot_df = pd.concat([combined_plot_df] + forecast_dfs)
-
-        # Plot
-        st.subheader("📉 Combined Forecast Plot")
-        fig_all, ax_all = plt.subplots(figsize=(10, 5))
-        for label, group in full_plot_df.groupby("Source"):
-            ax_all.plot(group["Week"], group["Sales"], label=label, marker="o", linestyle="--" if label != "Actual" else "-")
-        ax_all.set_xlabel("Week")
-        ax_all.set_ylabel("Sales")
-        ax_all.set_title("Actual vs Forecast (ETS, ARIMA, Prophet)")
-        ax_all.legend()
-        st.pyplot(fig_all)
+    except Exception as e:
+        st.error(f"Error processing file: {e}")
+else:
+    st.info("👈 Upload a CSV file to begin.")
