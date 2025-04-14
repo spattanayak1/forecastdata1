@@ -1,10 +1,13 @@
-import streamlit as st 
+import warnings  # ← Add this line at the very top
+import streamlit as st
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from datetime import timedelta
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 warnings.filterwarnings("ignore")
 # SET PAGE CONFIG FIRST
