@@ -18,9 +18,10 @@ st.set_page_config(layout="wide", page_title="📈 Sales Forecast App")
 # Hide GitHub icon and Streamlit UI elements
 hide_streamlit_style = """
     <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
     
-    .stDeployButton {display:none;}
-    .st-emotion-cache-6qob1r {display: none;}
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
