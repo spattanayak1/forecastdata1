@@ -1,145 +1,161 @@
-import warnings
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import warnings
+warnings.filterwarnings("ignore")
+
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
-from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from datetime import timedelta
 
-warnings.filterwarnings("ignore")
-
-# Set page config before anything else
+# Set page config at the very top!
 st.set_page_config(layout="wide", page_title="📈 Sales Forecast App")
 
-# Hide GitHub icon and Streamlit UI elements
-hide_streamlit_style = """
+# Hide Streamlit default header/footer
+hide_st_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stDeployButton {display:none;}
-    .st-emotion-cache-6qob1r {display: none;}
+    .css-1rs6os.edgvbvh3 {visibility: hidden;}  /* GitHub corner */
     </style>
 """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# Title
-st.title("📊 Sales Forecast App")
+# Sidebar menu
+menu = st.sidebar.radio("Navigation", ["📁 Upload & Forecast", "📊 Analysis", "📜 About"])
 
-# Upload section
-uploaded_file = st.file_uploader("📁 Upload your time-series CSV (max 100 rows)", type=["csv"])
+# Global state
+if 'data' not in st.session_state:
+    st.session_state.data = None
 
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
+# Upload & Forecast
+if menu == "📁 Upload & Forecast":
+    st.title("📁 Upload Data & Forecast")
 
-        if df.shape[0] > 100:
-            st.warning("❗ Please upload a CSV with 100 rows or fewer.")
-        else:
-            st.success("✅ File uploaded successfully!")
-
-            # Ensure it has two columns
-            if df.shape[1] != 2:
-                st.error("CSV must have exactly two columns: 'Week' and 'Sales'")
+    uploaded_file = st.file_uploader("Upload CSV file (max 100 rows)", type=["csv"])
+    
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file)
+            if df.shape[0] > 100:
+                st.warning("Please upload a file with max 100 rows.")
             else:
-                df.columns = ['Week', 'Sales']
-                df['Week'] = pd.to_numeric(df['Week'], errors='coerce')
-                df['Sales'] = pd.to_numeric(df['Sales'], errors='coerce')
-                df.dropna(inplace=True)
-                df = df.sort_values('Week')
-                df.reset_index(drop=True, inplace=True)
-
-                # ---------------------- Analysis Section ----------------------
-                st.header("📈 Exploratory Analysis")
-
-                st.subheader("🔹 Raw Data")
-                st.dataframe(df)
-
-                st.subheader("🔹 Summary Statistics")
-                st.write(df['Sales'].describe())
-
-                st.subheader("🔹 Mean & Median")
-                st.write(f"Mean Sales: {df['Sales'].mean():.2f}")
-                st.write(f"Median Sales: {df['Sales'].median():.2f}")
-
-                st.subheader("🔹 Normality (Histogram)")
-                fig, ax = plt.subplots()
-                sns.histplot(df['Sales'], kde=True, ax=ax)
-                st.pyplot(fig)
-
-                st.subheader("🔹 Stationarity (ADF Test)")
-                result = adfuller(df['Sales'])
-                st.write(f"ADF Statistic: {result[0]:.2f}")
-                st.write(f"p-value: {result[1]:.4f}")
-                if result[1] < 0.05:
-                    st.success("✅ The series is stationary.")
+                st.session_state.data = df.copy()
+                st.success("File uploaded successfully.")
+                
+                if 'Week' not in df.columns or 'Sales' not in df.columns:
+                    st.error("CSV must have columns: 'Week', 'Sales'")
                 else:
-                    st.warning("⚠️ The series is not stationary.")
+                    df = df[["Week", "Sales"]].dropna()
+                    df['Week'] = pd.to_datetime(df['Week'], errors='coerce', format="%Y-%m-%d")
+                    if df['Week'].isna().sum() > 0:
+                        df['Week'] = pd.date_range(start='2023-01-01', periods=len(df), freq='W')
+                    
+                    df = df.sort_values("Week")
 
-                st.subheader("🔹 Sales Over Time")
-                fig, ax = plt.subplots()
-                sns.lineplot(x=df['Week'], y=df['Sales'], ax=ax)
-                ax.set_title("Sales by Week")
-                st.pyplot(fig)
+                    st.subheader("📉 Original Data")
+                    st.line_chart(df.set_index('Week'))
 
-                # ---------------------- Forecast Section ----------------------
-                st.header("📅 Forecasting (Next 3 Weeks)")
+                    ### ARIMA
+                    st.subheader("🔢 ARIMA Forecast")
+                    arima_model = ARIMA(df['Sales'], order=(1,1,1)).fit()
+                    arima_forecast = arima_model.forecast(steps=3)
+                    
+                    ### ETS
+                    st.subheader("🌀 Exponential Smoothing (ETS)")
+                    ets_model = ExponentialSmoothing(df['Sales'], seasonal='add', seasonal_periods=4).fit()
+                    ets_forecast = ets_model.forecast(steps=3)
 
-                # Prepare future dataframe
-                future_weeks = list(range(df['Week'].max()+1, df['Week'].max()+4))
+                    ### Prophet
+                    st.subheader("🔮 Prophet Forecast")
+                    prophet_df = df.rename(columns={"Week": "ds", "Sales": "y"})
+                    m = Prophet()
+                    m.fit(prophet_df)
+                    future = m.make_future_dataframe(periods=3, freq='W')
+                    forecast = m.predict(future)
 
-                # ETS Forecast
-                ets_model = ExponentialSmoothing(df['Sales'], trend='add', seasonal=None).fit()
-                ets_forecast = ets_model.forecast(3)
+                    ### Final Forecast Comparison
+                    st.subheader("📊 Forecast Comparison")
 
-                # ARIMA Forecast
-                arima_model = ARIMA(df['Sales'], order=(1,1,1)).fit()
-                arima_forecast = arima_model.forecast(3)
+                    last_date = df['Week'].max()
+                    future_dates = [last_date + timedelta(weeks=i+1) for i in range(3)]
 
-                # Prophet Forecast
-                prophet_df = df.copy()
-                prophet_df['ds'] = pd.date_range(start='2024-01-01', periods=len(df), freq='W')
-                prophet_df.rename(columns={'Sales': 'y'}, inplace=True)
-                prophet_model = Prophet()
-                prophet_model.fit(prophet_df[['ds', 'y']])
-                future = prophet_model.make_future_dataframe(periods=3, freq='W')
-                forecast = prophet_model.predict(future)
-                prophet_forecast = forecast[['ds', 'yhat']].tail(3).reset_index(drop=True)
+                    result_df = pd.DataFrame({
+                        "Week": future_dates,
+                        "ARIMA": arima_forecast.values,
+                        "ETS": ets_forecast.values,
+                        "Prophet": forecast.tail(3)['yhat'].values
+                    })
 
-                # Combine forecasts into a table
-                forecast_df = pd.DataFrame({
-                    'Week': future_weeks,
-                    'ETS': ets_forecast.values,
-                    'ARIMA': arima_forecast.values,
-                    'Prophet': prophet_forecast['yhat'].values
-                })
+                    full_plot = df.copy()
+                    full_plot = full_plot.append(result_df.rename(columns={"ARIMA": "Sales"}), ignore_index=True)
 
-                st.subheader("🔹 Individual Forecasts")
-                st.write("📌 ETS Forecast:", ets_forecast.values)
-                st.write("📌 ARIMA Forecast:", arima_forecast.values)
-                st.write("📌 Prophet Forecast:", prophet_forecast['yhat'].values)
+                    st.line_chart(full_plot.set_index("Week"))
 
-                st.subheader("📊 Combined Forecast Table")
-                st.dataframe(forecast_df)
+                    st.write("📋 Forecast Table")
+                    st.dataframe(result_df.set_index("Week").style.format("{:.2f}"))
 
-                # Plot comparison chart
-                st.subheader("📈 Forecast vs Original (Line Chart)")
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.plot(df['Week'], df['Sales'], label='Actual Sales')
-                ax.plot(forecast_df['Week'], forecast_df['ETS'], label='ETS Forecast', linestyle='--')
-                ax.plot(forecast_df['Week'], forecast_df['ARIMA'], label='ARIMA Forecast', linestyle='--')
-                ax.plot(forecast_df['Week'], forecast_df['Prophet'], label='Prophet Forecast', linestyle='--')
-                ax.set_xlabel('Week')
-                ax.set_ylabel('Sales')
-                ax.set_title('Actual vs Forecast (Next 3 Weeks)')
-                ax.legend()
-                st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
 
-    except Exception as e:
-        st.error(f"Error processing file: {e}")
-else:
-    st.info("👈 Upload a CSV file to begin.")
+# Analysis Page
+elif menu == "📊 Analysis":
+    st.title("📊 Data Analysis")
+
+    if st.session_state.data is None:
+        st.warning("Please upload data first from 'Upload & Forecast'.")
+    else:
+        df = st.session_state.data
+
+        st.write("### Preview of Uploaded Data")
+        st.dataframe(df.head())
+
+        st.write("### Summary Statistics")
+        st.dataframe(df.describe())
+
+        st.write("### Distribution")
+        fig, ax = plt.subplots()
+        sns.histplot(df['Sales'], kde=True, ax=ax)
+        st.pyplot(fig)
+
+        st.write("### Boxplot")
+        fig, ax = plt.subplots()
+        sns.boxplot(x=df['Sales'], ax=ax)
+        st.pyplot(fig)
+
+        from scipy.stats import shapiro
+        stat, p = shapiro(df['Sales'])
+        st.write(f"Shapiro-Wilk Test for Normality: p-value = {p:.4f}")
+        if p > 0.05:
+            st.success("✅ Data appears to be normally distributed.")
+        else:
+            st.warning("⚠️ Data may not be normally distributed.")
+
+        from statsmodels.tsa.seasonal import seasonal_decompose
+        try:
+            df_sorted = df.sort_values("Week")
+            df_sorted.set_index('Week', inplace=True)
+            result = seasonal_decompose(df_sorted['Sales'], model='additive', period=4)
+            st.write("### Seasonality Decomposition")
+            fig = result.plot()
+            st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Error in seasonality decomposition: {e}")
+
+# About Page
+elif menu == "📜 About":
+    st.title("📜 About This App")
+    st.markdown("""
+    This is a simple time series forecasting app built with **Streamlit**.  
+    Upload your own CSV file with `Week` and `Sales`, and get forecasts using:
+    - ARIMA
+    - ETS
+    - Prophet
+
+    Use the menu on the left to navigate between uploading, analysis, and forecasting.
+    """)
+
