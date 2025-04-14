@@ -2,3 +2,5 @@ streamlit
 pandas
 statsmodels
 matplotlib
+prophet 
+scipy
