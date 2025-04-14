@@ -23,27 +23,29 @@ if menu == "Upload Data":
     st.header("📁 Upload Your CSV File")
     st.markdown("Please upload a CSV file with **Week** and **Sales** columns. Max 100 rows.")
 
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-
-    if uploaded_file is not None:
+    uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
+if uploaded_file is not None:
+    try:
+        # Try reading using utf-8, fallback to other encodings
         try:
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file, encoding='utf-8')
+        except UnicodeDecodeError:
+            try:
+                df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')  # common fallback
+            except:
+                df = pd.read_csv(uploaded_file, encoding='utf-16')  # another fallback
 
-            if df.shape[0] > 100:
-                st.error("❌ Maximum 100 rows allowed. Your file has more than 100.")
-            elif 'Week' not in df.columns or 'Sales' not in df.columns:
-                st.error("❌ CSV must contain 'Week' and 'Sales' columns.")
-            else:
-                df = df[['Week', 'Sales']].copy()
-                df['Week'] = pd.to_numeric(df['Week'], errors='coerce')
-                df['Sales'] = pd.to_numeric(df['Sales'], errors='coerce')
-                df.dropna(inplace=True)
+        if len(df) > 100:
+            st.error("The uploaded CSV file has more than 100 records. Please upload a CSV file with at most 100 records.")
+            st.session_state['data'] = None
+        else:
+            st.success("CSV file uploaded successfully!")
+            st.session_state['data'] = df
+            st.subheader("Preview of Uploaded Data")
+            st.dataframe(df)
+    except Exception as e:
+        st.error(f"Error reading CSV file: {e}")
 
-                st.session_state.data = df
-                st.success("✅ File uploaded and data saved.")
-                st.dataframe(df)
-        except Exception as e:
-            st.error(f"❌ Error reading file: {e}")
 
 # Analysis Menu
 elif menu == "Analysis":
