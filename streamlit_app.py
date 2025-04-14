@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 
 # Set page config
 st.set_page_config(page_title="Sales Forecast App", layout="wide")
+# Ensure session state initialized
+if "data" not in st.session_state:
+    st.session_state["data"] = None
 
 # Title
 st.title("📊 Sales Analysis & Forecasting App")
