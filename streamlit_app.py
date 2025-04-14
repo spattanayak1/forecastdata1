@@ -8,6 +8,17 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 import warnings
+# Hide Streamlit style
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            .stDeployButton {display:none;}
+            .st-emotion-cache-6qob1r {display: none;} /* Hides GitHub corner */
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 warnings.filterwarnings("ignore")
 
