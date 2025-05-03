@@ -9,6 +9,7 @@ from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 from datetime import timedelta
+import numpy as np
 
 warnings.filterwarnings("ignore")
 
